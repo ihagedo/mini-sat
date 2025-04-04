@@ -1,6 +1,6 @@
 import sys
-from cnf_parser import parse_dimacs
-from dpll import dpll
+from src.cnf_parser import parse_dimacs
+from src.dpll import dpll
 
 def main():
     if len(sys.argv) < 2:
