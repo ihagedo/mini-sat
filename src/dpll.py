@@ -1,4 +1,6 @@
-def dpll(clauses, assignment):
+from src.implication_graph import ImplicationGraph
+
+def dpll(clauses, assignment, graph):
     if not clauses:
         return assignment
     if any([clause == [] for clause in clauses]):
@@ -9,6 +11,7 @@ def dpll(clauses, assignment):
         lit = unit_clauses[0]
         assignment[abs(lit)] = lit > 0
         clauses = simplify(clauses, lit)
+        graph.add_implication(f"{lit}", f"assign {lit}")
         if any([clause == [] for clause in clauses]):
             return None
         unit_clauses = [c[0] for c in clauses if len(c) == 1]
@@ -21,6 +24,7 @@ def dpll(clauses, assignment):
     for value in [True, False]:
         chosen_lit = lit if value else -lit
         assignment[abs(chosen_lit)] = value
+        graph.add_implication(f"branch {lit}", f"assign {chosen_lit}")
         new_clauses = simplify(clauses, chosen_lit)
         result = dpll(new_clauses, assignment.copy(), graph)
         if result is not None:

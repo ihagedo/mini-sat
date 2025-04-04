@@ -5,6 +5,7 @@ import pytest
 
 from src.cnf_parser import parse_dimacs
 from src.dpll import dpll
+from src.implication_graph import ImplicationGraph
 
 # Example CNF formulas and expected outcomes
 examples = [
@@ -22,7 +23,8 @@ def write_temp_dimacs(content):
 def test_dpll_solver(dimacs_str, expected):
     path = write_temp_dimacs(dimacs_str)
     num_vars, clauses = parse_dimacs(path)
-    result = dpll(clauses, {})
+    graph = ImplicationGraph()
+    result = dpll(clauses, {}, graph)
     if expected:
         assert result is not None, "Expected SAT but got UNSAT"
     else:
