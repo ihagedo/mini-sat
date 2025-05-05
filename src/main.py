@@ -1,3 +1,62 @@
+def run_solver(file_path, heuristic='dlis', switch_after=10, decay_factor=0.95, benchmark=False):
+    """Run the DPLL solver from a Python console with specified options."""
+    from src.cnf_parser import parse_dimacs
+    from src.dpll import dpll, dpll_norm
+    from src.implication_graph import ImplicationGraph
+    import csv, os
+    from datetime import datetime
+
+    num_vars, clauses = parse_dimacs(file_path)
+    assignment = {}
+    graph = ImplicationGraph()
+
+    actual_heuristic = heuristic if heuristic != 'none' else None
+
+    if heuristic == 'auto':
+        result, dlis_count, vsids_count, vsids_improvement = dpll(
+            clauses, assignment, graph,
+            heuristic='dlis',
+            activity=None,
+            switch_after=switch_after,
+            decay_factor=decay_factor
+        )
+    elif heuristic == 'none':
+        result = dpll_norm(clauses, assignment, graph,)
+    else:
+        activity = {} if heuristic == 'vsids' else None
+        result, dlis_count, vsids_count, vsids_improvement = dpll(
+            clauses, assignment, graph,
+            heuristic=actual_heuristic,
+            activity=activity,
+            switch_after=switch_after,
+            decay_factor=decay_factor
+        )
+
+    status = "SATISFIABLE" if result else "UNSATISFIABLE"
+    print(f"{status} Heuristic: {heuristic}")
+    if result:
+        print("Assignment (first 10 vars):", dict(list(result.items())[:10]))
+
+    if benchmark:
+        output_file = "benchmark_results.csv"
+        file_exists = os.path.isfile(output_file)
+        with open(output_file, mode="a", newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            if not file_exists:
+                writer.writerow(["timestamp", "file", "heuristic", "status", "dlis_count", "vsids_count", "vsids_improvement", "switch_after", "decay_factor"])
+            writer.writerow([
+                datetime.now().isoformat(),
+                os.path.basename(file_path),
+                heuristic,
+                status,
+                dlis_count,
+                vsids_count,
+                f"{vsids_improvement:.2f}",
+                switch_after,
+                decay_factor
+            ])
+    return result
+
 import argparse
 import csv
 import os
