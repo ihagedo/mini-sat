@@ -15,7 +15,7 @@ def dpll(clauses, assignment, graph, heuristic='dlis', activity=None, decay_fact
 
     if depth > MAX_DEPTH:
         logging.warning(f"Exceeded max recursion depth: {depth}")
-        return None, dlis_count, vsids_count, vsids_improvement
+        return {"UNSAT": True, "depth": depth}, dlis_count, vsids_count, vsids_improvement
 
     max_depth_reached = max(max_depth_reached, depth)
 
@@ -25,7 +25,7 @@ def dpll(clauses, assignment, graph, heuristic='dlis', activity=None, decay_fact
         logging.info(f"Max recursion depth reached: {max_depth_reached}")
         return assignment, dlis_count, vsids_count, vsids_improvement
     if any([clause == [] for clause in clauses]):
-        return None, dlis_count, vsids_count, vsids_improvement
+        return {"UNSAT": True, "depth": depth}, dlis_count, vsids_count, vsids_improvement
 
     unit_clauses = [c[0] for c in clauses if len(c) == 1]
     while unit_clauses:
@@ -34,8 +34,13 @@ def dpll(clauses, assignment, graph, heuristic='dlis', activity=None, decay_fact
         clauses = simplify(clauses, lit)
         graph.add_implication(f"{lit}", f"assign {lit}")
         if any([clause == [] for clause in clauses]):
-            return None, dlis_count, vsids_count, vsids_improvement
+            return {"UNSAT": True, "depth": depth}, dlis_count, vsids_count, vsids_improvement
         unit_clauses = [c[0] for c in clauses if len(c) == 1]
+
+    if heuristic == 'lookahead' and depth >= switch_after:
+        logging.info(f"Switching from Lookahead to DLIS at depth {depth}")
+        graph.add_implication(f"depth {depth}", "Switch Lookahead→DLIS")
+        heuristic = 'dlis'
 
     if heuristic == 'dlis' and depth >= switch_after:
         logging.info(f"Switching heuristic from DLIS to VSIDS at depth {depth}")
@@ -45,6 +50,8 @@ def dpll(clauses, assignment, graph, heuristic='dlis', activity=None, decay_fact
             activity = {}
 
     lit = select_literal(clauses, assignment, heuristic, activity)
+    if lit is None:
+        return {"UNSAT": True, "depth": depth}, dlis_count, vsids_count, vsids_improvement
 
     for value in [True, False]:
         chosen_lit = lit if value else -lit
@@ -71,7 +78,7 @@ def dpll(clauses, assignment, graph, heuristic='dlis', activity=None, decay_fact
         if result is not None:
             return result, dlis_count, vsids_count, vsids_improvement
 
-    return None, dlis_count, vsids_count, vsids_improvement
+    return {"UNSAT": True, "depth": depth}, dlis_count, vsids_count, vsids_improvement
 
 def dpll_norm(clauses, assignment, graph):
     if not clauses:
@@ -83,7 +90,7 @@ def dpll_norm(clauses, assignment, graph):
     while unit_clauses:
         lit = unit_clauses[0]
         assignment[abs(lit)] = lit > 0
-        clauses = simplify_norm(clauses, lit)
+        clauses = simplify(clauses, lit)
         graph.add_implication(f"{lit}", f"assign {lit}")
         if any([clause == [] for clause in clauses]):
             return None
@@ -98,24 +105,12 @@ def dpll_norm(clauses, assignment, graph):
         chosen_lit = lit if value else -lit
         assignment[abs(chosen_lit)] = value
         graph.add_implication(f"branch {lit}", f"assign {chosen_lit}")
-        new_clauses = simplify_norm(clauses, chosen_lit)
+        new_clauses = simplify(clauses, chosen_lit)
         result = dpll_norm(new_clauses, assignment.copy(), graph)
         if result is not None:
             return result
 
     return None
-
-def simplify_norm(clauses, literal):
-    new_clauses = []
-    for clause in clauses:
-        if literal in clause:
-            continue
-        if -literal in clause:
-            new_clause = [l for l in clause if l != -literal]
-            new_clauses.append(new_clause)
-        else:
-            new_clauses.append(clause)
-    return new_clauses
 
 def simplify(clauses, literal):
     new_clauses = []
@@ -132,6 +127,10 @@ def simplify(clauses, literal):
 def select_literal(clauses, assignment, heuristic, activity):
     unassigned = set(abs(lit) for clause in clauses for lit in clause if abs(lit) not in assignment)
 
+    if not unassigned:
+        logging.warning("No unassigned literals left during selection.")
+        return None
+
     if heuristic == 'vsids':
         return max(unassigned, key=lambda x: activity.get(x, 1.0))
 
@@ -141,7 +140,7 @@ def select_literal(clauses, assignment, heuristic, activity):
             for lit in clause:
                 if abs(lit) not in assignment:
                     score[lit] = score.get(lit, 0) + 1
-        return max(score, key=score.get)
+        return max(score, key=score.get) if score else next(iter(unassigned))
 
     elif heuristic == 'lookahead':
         best_literal = None
@@ -153,9 +152,6 @@ def select_literal(clauses, assignment, heuristic, activity):
                 if reduction > best_reduction:
                     best_literal = val
                     best_reduction = reduction
-        if best_reduction <= 0:
-            logging.warning("Lookahead found no beneficial reduction, switching to DLIS")
-            return select_literal(clauses, assignment, 'dlis', activity)
         logging.info(f"Look-ahead selected literal {best_literal} with reduction {best_reduction}")
         return abs(best_literal)
 
